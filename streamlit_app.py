@@ -215,4 +215,4 @@ else:
 
 st.markdown("---")
 st.caption("🛰️ Ma'lumotlar Google Earth Engine (MODIS Terra) asosida tayyorlandi.")
-st.caption("👨‍💻 Dasturchi: Mamurbek | 📅 2024")
+st.caption
