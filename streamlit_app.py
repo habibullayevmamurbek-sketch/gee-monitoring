@@ -20,10 +20,10 @@ def authenticate_gee():
             ee.Initialize(credentials)
             return True
         else:
-            st.error("Secrets bo'limida 'gee_key' topilmadi!")
+            st.error("Secrets bo'limida 'gee_key' topilmadi! Iltimos, kalitni joylang.")
             return False
     except Exception as e:
-        st.error(f"GEE bilan ulanishda xato: {e}")
+        st.error(f"GEE bilan ulanishda xato yuz berdi: {e}")
         return False
 
 if authenticate_gee():
@@ -31,15 +31,15 @@ if authenticate_gee():
     
     # 3. Sidebar: Yilni tanlash
     st.sidebar.header("Sozlamalar")
-    year = st.sidebar.slider("Yilni tanlang:", 2015, 2024, 2023)
+    year = st.sidebar.slider("Monitoring yilini tanlang:", 2015, 2024, 2023)
     
     # 4. Gurlan tumani koordinatalari (Polygon)
-    # Gurlan tumani uchun taxminiy chegaralar
+    # Gurlan tumani chegaralarini qamrab oluvchi koordinatalar
     gurlan_region = ee.Geometry.Polygon([
-        [[60.30, 41.75], [60.65, 41.75], [60.65, 42.05], [60.30, 42.05]]
+        [[60.30, 41.75], [60.75, 41.75], [60.75, 42.10], [60.30, 42.10]]
     ])
 
-    # 5. MODIS NDVI ma'lumotlarini yuklash
+    # 5. MODIS NDVI ma'lumotlarini yuklash (MOD13A2 mahsuloti)
     start_date = f"{year}-01-01"
     end_date = f"{year}-12-31"
     
@@ -47,7 +47,7 @@ if authenticate_gee():
                 .filterDate(start_date, end_date) \
                 .select('NDVI')
 
-    # 6. NDVI hisoblash funksiyasi
+    # 6. Har bir rasm uchun o'rtacha NDVI qiymatini hisoblash funksiyasi
     def get_ndvi_stats(img):
         mean_ndvi = img.reduceRegion(
             reducer=ee.Reducer.mean(),
@@ -57,46 +57,56 @@ if authenticate_gee():
         date = img.date().format('YYYY-MM-DD')
         return ee.Feature(None, {
             'date': date, 
-            'NDVI': ee.Number(mean_ndvi).multiply(0.0001)
+            'NDVI': ee.Number(mean_ndvi).multiply(0.0001) # MODIS skalasini (0-1) oralig'iga o'tkazish
         })
 
-    # Ma'lumotlarni olish
-    with st.spinner('Ma'lumotlar tahlil qilinmoqda...'):
-        stats = dataset.map(get_ndvi_stats).getInfo()
-        
-        # Jadvalga o'tkazish
-        data_list = [f['properties'] for f in stats['features']]
-        df = pd.DataFrame(data_list)
-        
-        if not df.empty:
-            df['date'] = pd.to_datetime(df['date'])
-            df = df.sort_values('date')
+    # Ma'lumotlarni tahlil qilish jarayoni
+    with st.spinner("Ma'lumotlar tahlil qilinmoqda, iltimos kuting..."):
+        try:
+            stats = dataset.map(get_ndvi_stats).getInfo()
+            
+            # Ma'lumotlarni jadval (DataFrame) ko'rinishiga o'tkazish
+            data_list = [f['properties'] for f in stats['features']]
+            df = pd.DataFrame(data_list)
+            
+            if not df.empty:
+                df['date'] = pd.to_datetime(df['date'])
+                df = df.sort_values('date')
 
-            # 7. Natijalarni chiqarish
-            col1, col2 = st.columns([2, 1])
+                # 7. Natijalarni vizuallashtirish
+                col1, col2 = st.columns([2, 1])
 
-            with col1:
-                st.subheader(f"Gurlan tumani: {year}-yilgi o'simlik qoplami dinamikasi")
-                st.line_chart(df.set_index('date')['NDVI'])
+                with col1:
+                    st.subheader(f"Gurlan tumani: {year}-yilgi vegetatsiya grafigi")
+                    # Chiziqli grafik chizish
+                    st.line_chart(df.set_index('date')['NDVI'])
 
-            with col2:
-                st.subheader("📊 Yillik Tahlil")
-                avg_ndvi = df['NDVI'].mean()
-                max_ndvi = df['NDVI'].max()
+                with col2:
+                    st.subheader("📊 Statistik ko'rsatkichlar")
+                    avg_ndvi = df['NDVI'].mean()
+                    max_ndvi = df['NDVI'].max()
+                    
+                    st.metric(label="Yillik o'rtacha NDVI", value=f"{avg_ndvi:.3f}")
+                    st.metric(label="Maksimal yashillik", value=f"{max_ndvi:.3f}")
+
+                    # Xulosa qismi
+                    if avg_ndvi < 0.20:
+                        st.error("🚨 Xulosa: Yashillik darajasi juda past. Qurg'oqchilik alomatlari mavjud.")
+                    elif avg_ndvi < 0.30:
+                        st.warning("⚠️ Xulosa: Vegetatsiya holati o'rtacha darajada.")
+                    else:
+                        st.success("🌿 Xulosa: O'simliklar qoplami yaxshi va barqaror.")
                 
-                st.metric(label="O'rtacha NDVI", value=f"{avg_ndvi:.3f}")
-                st.metric(label="Eng yuqori yashillik", value=f"{max_ndvi:.3f}")
-
-                if avg_ndvi < 0.20:
-                    st.error("🚨 Hududda jiddiy qurg'oqchilik yoki sho'rlanish aniqlandi.")
-                elif avg_ndvi < 0.30:
-                    st.warning("⚠️ Vegetatsiya darajasi o'rtacha.")
-                else:
-                    st.success("🌿 Hududda o'simlik qoplami yaxshi holatda.")
-        else:
-            st.warning("Ushbu yil uchun ma'lumot topilmadi.")
+                # Ma'lumotlar jadvalini ko'rsatish (ixtiyoriy)
+                if st.checkbox("Xom ma'lumotlarni ko'rish"):
+                    st.write(df)
+            else:
+                st.warning(f"Afsuski, {year}-yil uchun sun'iy yo'ldosh ma'lumotlari topilmadi.")
+        
+        except Exception as e:
+            st.error(f"Ma'lumotlarni qayta ishlashda xato: {e}")
 
     st.divider()
-    st.caption("Ma'lumotlar MODIS (Terra) sun'iy yo'ldoshidan olindi. Koordinatalar: Gurlan, Xorazm.")
+    st.info("ℹ️ Ushbu tizim MODIS sun'iy yo'ldosh ma'lumotlari asosida real vaqtda NDVI indeksini hisoblaydi.")
 else:
-    st.info("💡 Davom etish uchun Streamlit Cloud Settings -> Secrets bo'limiga GEE JSON kalitini joylang.")
+    st.warning("Diqqat: Google Earth Engine autentifikatsiyadan o'tmadi. Secrets bo'limini tekshiring.")
