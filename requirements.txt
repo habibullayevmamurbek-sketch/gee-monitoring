@@ -1,5 +1,5 @@
 streamlit
-earthengine-api
-google-auth
+requests
 pandas
 numpy
+matplotlib
