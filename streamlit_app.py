@@ -4,18 +4,10 @@ import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
 import json
+import calendar
 
 # ============================================================
-# 1. SENTINEL HUB API (GEEsiz)
-# ============================================================
-
-SENTINEL_HUB_CLIENT_ID = "your-client-id"
-SENTINEL_HUB_CLIENT_SECRET = "your-client-secret"
-
-# Yoki bepul usul - Open-Meteo va boshqa manbalar
-
-# ============================================================
-# 2. NASA POWER API (BEPUL, GEEsiz)
+# 1. NASA POWER API (BEPUL, GEEsiz)
 # ============================================================
 
 def get_nasa_power_data(lat, lon, start_date, end_date):
@@ -46,7 +38,7 @@ def get_nasa_power_data(lat, lon, start_date, end_date):
         return None
 
 # ============================================================
-# 3. OPEN-METEO API (BEPUL ob-havo)
+# 2. OPEN-METEO API (BEPUL ob-havo)
 # ============================================================
 
 def get_openmeteo_data(lat, lon, start_date, end_date):
@@ -75,15 +67,13 @@ def get_openmeteo_data(lat, lon, start_date, end_date):
         return None
 
 # ============================================================
-# 4. NDVI SIMULATSIYA (REAL MA'LUMOTLAR YO'Q BO'LSA)
+# 3. NDVI SIMULATSIYA
 # ============================================================
 
 def simulate_ndvi(yil, oy, mahsulot_turi):
     """
     Vegitatsiya indeksini simulyatsiya qilish
-    (Real ma'lumotlar kelguniga qadar)
     """
-    # Mahsulot bo'yicha bazaviy NDVI
     ndvi_base = {
         "Bug'doy": 0.45,
         "Paxta": 0.35,
@@ -92,43 +82,25 @@ def simulate_ndvi(yil, oy, mahsulot_turi):
         "Barchasi": 0.42
     }
     
-    # Oy bo'yicha o'zgarish (o'rtacha)
     oy_factor = {
-        1: 0.3,   # Yanvar - qish
-        2: 0.35,  # Fevral
-        3: 0.45,  # Mart - bahor
-        4: 0.55,  # Aprel
-        5: 0.65,  # May
-        6: 0.75,  # Iyun - yoz
-        7: 0.80,  # Iyul
-        8: 0.75,  # Avgust
-        9: 0.65,  # Sentabr - kuz
-        10: 0.50, # Oktabr
-        11: 0.40, # Noyabr
-        12: 0.30  # Dekabr
+        1: 0.3,   2: 0.35,  3: 0.45,  4: 0.55,
+        5: 0.65,  6: 0.75,  7: 0.80,  8: 0.75,
+        9: 0.65,  10: 0.50, 11: 0.40, 12: 0.30
     }
     
     base = ndvi_base.get(mahsulot_turi, 0.42)
     factor = oy_factor.get(oy, 0.5)
-    
-    # Yil bo'yicha ozgina o'zgarish
     yil_factor = 1.0 + (yil - 2020) * 0.02
-    
-    # Tasodifiy o'zgarish (±0.05)
     random_var = np.random.uniform(-0.05, 0.05)
     
     ndvi = base * factor * yil_factor + random_var
     return max(0, min(0.95, ndvi))
 
 # ============================================================
-# 5. GURLAN TUMANI KOORDINATALARI
+# 4. GURLAN TUMANI
 # ============================================================
 
-GURLAN_CENTER = {
-    "lat": 41.85,
-    "lon": 60.15,
-    "name": "Gurlan tumani markazi"
-}
+GURLAN_CENTER = {"lat": 41.85, "lon": 60.15, "name": "Gurlan tumani markazi"}
 
 GURLAN_VILLAGES = [
     {"name": "Gurlan shaharchasi", "lat": 41.85, "lon": 60.15},
@@ -139,7 +111,7 @@ GURLAN_VILLAGES = [
 ]
 
 # ============================================================
-# 6. STREAMLIT UI
+# 5. STREAMLIT UI
 # ============================================================
 
 st.set_page_config(
@@ -176,7 +148,7 @@ with st.sidebar:
     st.info("ℹ️ Bu demo versiya. Haqiqiy sun'iy yo'ldosh ma'lumotlari keyinroq qo'shiladi.")
 
 # ============================================================
-# 7. SANA HISOBLASH
+# 6. SANA HISOBLASH
 # ============================================================
 
 oy_raqamlari = {
@@ -187,27 +159,24 @@ oy_raqamlari = {
 
 oy_raqam = oy_raqamlari[oy]
 start_date = f"{yil}-{oy_raqam:02d}-01"
-import calendar
 _, kunlar = calendar.monthrange(yil, oy_raqam)
 end_date = f"{yil}-{oy_raqam:02d}-{kunlar}"
 
 # ============================================================
-# 8. MA'LUMOTLARNI OLISH
+# 7. MA'LUMOTLARNI OLISH
 # ============================================================
 
-# Joy koordinatalarini aniqlash
 if joy == "Gurlan tumani markazi":
     lat, lon = GURLAN_CENTER["lat"], GURLAN_CENTER["lon"]
 else:
     village = next(v for v in GURLAN_VILLAGES if v["name"] == joy)
     lat, lon = village["lat"], village["lon"]
 
-# NASA POWER API'dan ma'lumot olish
 with st.spinner("🛰️ Sun'iy yo'ldosh ma'lumotlari yuklanmoqda..."):
     nasa_data = get_nasa_power_data(lat, lon, start_date, end_date)
     weather_data = get_openmeteo_data(lat, lon, start_date, end_date)
 
-# NDVI qiymatini olish (simulyatsiya + real ma'lumotlar)
+# NDVI qiymatini olish
 if nasa_data and 'properties' in nasa_data:
     try:
         ndvi_value = nasa_data['properties']['parameter']['NDVI']['mean']
@@ -217,13 +186,12 @@ else:
     ndvi_value = simulate_ndvi(yil, oy_raqam, mahsulot)
 
 # ============================================================
-# 9. VIZUALIZATSIYA
+# 8. VIZUALIZATSIYA
 # ============================================================
 
 st.write(f"📊 **Tanlangan davr:** `{start_date}` dan `{end_date}` gacha")
 st.write(f"📍 **Joy:** {joy} ({lat}°N, {lon}°E)")
 
-# Asosiy ko'rsatkichlar
 col1, col2, col3 = st.columns(3)
 
 with col1:
@@ -232,19 +200,14 @@ with col1:
 with col2:
     if ndvi_value < 0.2:
         holat = "❌ Yomon"
-        rang = "#d73027"
     elif ndvi_value < 0.4:
         holat = "⚠️ O'rta"
-        rang = "#fc8d59"
     elif ndvi_value < 0.6:
         holat = "🟡 Yaxshi"
-        rang = "#fee08b"
     elif ndvi_value < 0.8:
         holat = "🟢 A'lo"
-        rang = "#d9ef8b"
     else:
         holat = "🌳 Eng yaxshi"
-        rang = "#1a9850"
     
     st.metric(label="📊 Holat", value=holat)
 
@@ -255,7 +218,6 @@ with col3:
 st.subheader("🎨 NDVI Shkalasi")
 
 shkala_cols = st.columns(5)
-
 colors = ["#d73027", "#fc8d59", "#fee08b", "#d9ef8b", "#1a9850"]
 labels = ["0.0-0.2\nYomon", "0.2-0.4\nO'rta", "0.4-0.6\nYaxshi", "0.6-0.8\nA'lo", "0.8-1.0\nEng yaxshi"]
 
@@ -296,17 +258,17 @@ if weather_data:
     daily = weather_data.get('daily', {})
     
     if daily:
+        # ✅ TO'G'RI - ikki tirnoq (") ishlatilgan
         weather_df = pd.DataFrame({
-            'Sana': daily.get('time', []),
-            'Harorat (°C)': daily.get('temperature_2m_mean', []),
-            'Yog'ingarchilik (mm)': daily.get('precipitation_sum', []),
-            'Tuproq namligi': daily.get('soil_moisture_0_to_10cm', [])
+            "Sana": daily.get('time', []),
+            "Harorat (°C)": daily.get('temperature_2m_mean', []),
+            "Yogingarchilik (mm)": daily.get('precipitation_sum', []),
+            "Tuproq namligi": daily.get('soil_moisture_0_to_10cm', [])
         })
         
         st.dataframe(weather_df, use_container_width=True)
         
-        # Grafik
-        st.line_chart(weather_df.set_index('Sana')[['Harorat (°C)', 'Yog\'ingarchilik (mm)']])
+        st.line_chart(weather_df.set_index("Sana")[["Harorat (°C)", "Yogingarchilik (mm)"]])
 
 # Xarita
 st.subheader("🗺️ Xarita")
